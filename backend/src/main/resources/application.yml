@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+doodle:
+  room:
+    max-players: 8
+    code-length: 6
+    cleanup-delay-seconds: 60      # ← missing
+  game:
+    default-rounds: 3
+    turn-time-seconds: 80
+    word-selection-seconds: 15
+    turn-end-delay-seconds: 5      # ← missing
+    round-end-delay-seconds: 5     # ← missing
+    game-over-delay-seconds: 10    # ← missing
+    hint-intervals: [0.4, 0.6, 0.8]
+  scoring:                         # ← entire section missing
+    base-points: 100
+    order-bonus-per-rank: 15
+    min-guesser-points: 10
+  words:
+    default-language: en
+    path: classpath:words/
+
+logging:
+  level:
+    com.mvp.doodle: DEBUG
+    org.springframework.messaging: INFO

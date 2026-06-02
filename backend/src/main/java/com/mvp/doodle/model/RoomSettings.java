@@ -10,6 +10,6 @@ public class RoomSettings {
     private int maxPlayers = 8;
     private int rounds = 3;
     private int turnTimeSeconds = 80;
-    private int wordSelectionSeconds = 15;
+    private int wordSelectionSeconds = 10;
     private String language = "en";
 }

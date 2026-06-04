@@ -5,16 +5,16 @@ doodle:
   room:
     max-players: 8
     code-length: 6
-    cleanup-delay-seconds: 60      # ← missing
+    cleanup-delay-seconds: 60
   game:
     default-rounds: 3
     turn-time-seconds: 80
     word-selection-seconds: 15
-    turn-end-delay-seconds: 5      # ← missing
-    round-end-delay-seconds: 5     # ← missing
-    game-over-delay-seconds: 10    # ← missing
+    turn-end-delay-seconds: 5
+    round-end-delay-seconds: 5
+    game-over-delay-seconds: 10
     hint-intervals: [0.4, 0.6, 0.8]
-  scoring:                         # ← entire section missing
+  scoring:
     base-points: 100
     order-bonus-per-rank: 15
     min-guesser-points: 10

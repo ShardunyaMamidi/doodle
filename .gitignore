@@ -28,3 +28,7 @@ application-local.yml
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal design / planning docs
+doodle_design.md
+backend-sprint-plan.md

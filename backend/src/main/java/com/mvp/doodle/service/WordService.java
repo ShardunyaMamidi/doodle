@@ -24,6 +24,7 @@ public class WordService {
     public void loadWords() {
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
         try {
+            // loading the files from resources/words
             Resource[] resources = resolver.getResources("classpath:words/words_*.txt");
             for (Resource resource : resources) {
                 String filename = resource.getFilename();

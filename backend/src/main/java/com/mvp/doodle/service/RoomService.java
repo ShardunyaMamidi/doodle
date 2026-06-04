@@ -2,11 +2,13 @@ package com.mvp.doodle.service;
 
 import com.mvp.doodle.dto.inbound.room.CreateRoomRequest;
 import com.mvp.doodle.dto.inbound.room.JoinRoomRequest;
+import com.mvp.doodle.dto.inbound.room.SettingsUpdateIn;
 import com.mvp.doodle.exception.RoomFullException;
 import com.mvp.doodle.exception.RoomNotFoundException;
 import com.mvp.doodle.model.GameRoom;
 import com.mvp.doodle.model.GameState;
 import com.mvp.doodle.model.Player;
+import com.mvp.doodle.model.RoomSettings;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -145,6 +147,23 @@ public class RoomService {
     private void cleanupRoom(String roomId, String code) {
         rooms.remove(roomId);
         codeToRoom.remove(code);
+    }
+
+    public void updateSettings(String roomId, String sessionId, SettingsUpdateIn updates) {
+        GameRoom room = getRoom(roomId);
+        if (room == null) throw new RoomNotFoundException(roomId);
+        room.getLock().lock();
+        try {
+            if (room.getState() != GameState.LOBBY) throw new IllegalStateException("Settings can only be changed when in Lobby");
+            if (!sessionId.equals(room.getHostSessionId())) throw new IllegalStateException("Only the host can change settings");
+
+            RoomSettings settings = room.getSettings();
+            if (updates.rounds() != null)          settings.setRounds(updates.rounds());
+            if (updates.turnTimeSeconds() != null)  settings.setTurnTimeSeconds(updates.turnTimeSeconds());
+            if (updates.maxPlayers() != null)       settings.setMaxPlayers(updates.maxPlayers());
+        } finally {
+            room.getLock().unlock();
+        }
     }
 
     public GameRoom getRoom(String roomId)              { return rooms.get(roomId); }

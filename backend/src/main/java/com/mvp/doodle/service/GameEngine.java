@@ -1,9 +1,14 @@
 package com.mvp.doodle.service;
 
+import com.mvp.doodle.dto.inbound.gameplay.ChatMessageIn;
+import com.mvp.doodle.dto.inbound.gameplay.DrawMessageIn;
+import com.mvp.doodle.dto.inbound.gameplay.WordChoiceIn;
+import com.mvp.doodle.dto.outbound.draw.DrawEventOut;
 import com.mvp.doodle.dto.outbound.draw.WordChoicesPrivate;
 import com.mvp.doodle.dto.outbound.shared.PlayerInfo;
 import com.mvp.doodle.dto.outbound.shared.ScoreEntry;
 import com.mvp.doodle.dto.outbound.state.*;
+import com.mvp.doodle.model.DrawEvent;
 import com.mvp.doodle.model.GameRoom;
 import com.mvp.doodle.model.GameState;
 import com.mvp.doodle.model.Player;
@@ -15,21 +20,26 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @Service
 public class GameEngine {
 
     private final RoomService roomService;
     private final WordService wordService;
+    private final DrawingService drawingService;
+    private final ScoringService scoringService;
     private final SimpMessagingTemplate messaging;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
     // Timers of different rooms
     private final ConcurrentHashMap<String, List<ScheduledFuture<?>>> roomTimers = new ConcurrentHashMap<>();
 
-    public GameEngine(RoomService roomService, WordService wordService, SimpMessagingTemplate messaging) {
+    public GameEngine(RoomService roomService, WordService wordService, SimpMessagingTemplate messaging, DrawingService drawingService, ScoringService scoringService) {
         this.roomService = roomService;
         this.wordService = wordService;
         this.messaging = messaging;
+        this.drawingService = drawingService;
+        this.scoringService = scoringService;
     }
 
     // LOBBY -> WORD_SELECTION (When host starts the game)
@@ -63,8 +73,8 @@ public class GameEngine {
 
         // reset their answering status from prev round
         room.getPlayers().values().forEach(Player::resetForNewTurn);
-        // TODO: Yet to implement
-        //drawingService.resetCanvas(room);
+
+        drawingService.resetCanvas(room);
         // Set hint level to 0
         room.setHintLevel(0);
 
@@ -115,13 +125,14 @@ public class GameEngine {
         room.setState(GameState.TURN_END);
 
         // Score the drawer
-        // TODO: Implement this later
-        // int drawerPoints = scoringService.scoreDrawer(room);
-        // room.getCurrentDrawer().setScore(room.getCurrentDrawer().getScore() + drawerPoints));
+        int drawerPoints = scoringService.scoreDrawer(room);
+        room.getCurrentDrawer().setScore(room.getCurrentDrawer().getScore() + drawerPoints);
 
         // collect points from players
         // they earn points when they answer correctly and that is handled else where
-        Map<String, Integer> earned = new HashMap<>();
+        Map<String, Integer> earned = room.getGuessers().stream()
+                        .collect(Collectors.toMap(Player::getName, Player::getScore));
+        earned.put(room.getCurrentDrawer().getName(), drawerPoints);
 
         broadcastState(room,
                 new TurnEndState(room.getCurrentWord(), earned, buildScoreboard(room)));
@@ -216,10 +227,109 @@ public class GameEngine {
                 room.getHostSessionId());
     }
 
-    public void broadcastLobbyUpdate(String roomId) {
+    // Creating and broadcasting draw events based on type
+    public void handleDraw(String roomId, String sessionId, DrawMessageIn msg) {
         GameRoom room = roomService.getRoom(roomId);
-        if (room == null) return;
-        broadcastState(room, buildLobbyState(room));
+        if (room != null) {
+            room.getLock().lock();
+            try {
+                if (room.getState() != GameState.DRAWING) return ;
+                if (!sessionId.equals(room.getCurrentDrawerSessionId())) return ;
+
+                switch (msg.type()) {
+                    case "stroke" -> {
+                        DrawEvent event = drawingService.addStroke(room, msg);
+                        broadcastDrawingState(roomId, new DrawEventOut(event.getType(), event.getPoints(), event.getColor(), event.getLineWidth()));
+                    }
+                    case "clear" -> {
+                        drawingService.clearCanvas(room);
+                        broadcastDrawingState(roomId, new DrawEventOut("clear", null, null, 0));
+                    }
+                    case "undo" -> {
+                        drawingService.undoLast(room);
+                        broadcastDrawingState(roomId, new DrawEventOut("undo", null, null, 0));
+                    }
+                }
+            } finally {
+                room.getLock().unlock();
+            }
+        }
+    }
+
+    // Handling chat interface; based on words said it the chat
+    // This method handles chat of player with sessionId
+    public void handleChat(String roomId, String sessionId, ChatMessageIn msg) {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room != null) {
+            room.getLock().lock();
+            try {
+                Player sender = room.getPlayers().get(sessionId);
+                if (sender == null || !sender.isConnected()) return;
+                String text = sanitize(msg.text());
+                // If not drawing state, we can assume it is a normal chat
+                if (room.getState() != GameState.DRAWING) {
+                    broadcastChat(roomId, new ChatEvent(sender.getName(), text, "chat"));
+                    return;
+                }
+                // The current drawer cannot chat
+                if (sessionId.equals(room.getCurrentDrawerSessionId())) return ;
+
+                // Check the guessed word
+                WordService.GuessResult result = wordService.checkGuess(text, room.getCurrentWord());
+                switch (result) {
+                    case CORRECT -> {
+                        sender.setHasGuessedThisTurn(true);
+                        int guessOrder = (int) room.getPlayers().values().stream().
+                                filter(Player::isHasGuessedThisTurn).count();
+                        sender.setGuessOrder(guessOrder);
+
+                        // score the sender/guesser
+                        int timeLeft = (int)((room.getTurnDeadlineEpochMs() - System.currentTimeMillis()) / 1000);
+                        int pts = scoringService.scoreGuesser(timeLeft, room.getSettings().getTurnTimeSeconds(), sender.getGuessOrder(), room.getGuessers().size());
+                        sender.setScore(sender.getScore() + pts);
+
+                        // Broadcast in chat
+                        broadcastChat(roomId, new ChatEvent(sender.getName(), sender.getName() + " has guessed the word!", "correct"));
+                        // If everyone guessed, we can transition to turn end
+                        if (room.allGuessed()) {
+                            transitionToTurnEnd(room);
+                        }
+                    }
+
+                    case CLOSE -> {
+                        // Just broadcast to everyone that the sender's answer is close
+                        broadcastChat(roomId, new ChatEvent(sender.getName(), "It's close!", "close"));
+                    }
+
+                    case WRONG -> {
+                        broadcastChat(roomId, new ChatEvent(sender.getName(), text, "chat"));
+                    }
+                }
+            } finally {
+                room.getLock().unlock();
+            }
+        }
+    }
+
+    // handling the word chosen by the user
+    public void handleWordChoice(String roomId, String sessionId, int wordChoiceIndex) {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room != null) {
+            room.getLock().lock();
+            try {
+                if (!GameState.WORD_SELECTION.equals(room.getState())) return ;
+                if(!sessionId.equals(room.getCurrentDrawerSessionId())) return ;
+
+                List<String> wordChoices = room.getWordChoices();
+                if (wordChoiceIndex < 0 || wordChoiceIndex >= wordChoices.size()) return ;
+                String chosenWord = wordChoices.get(wordChoiceIndex);
+
+                transitionToDrawing(room, chosenWord);
+
+            } finally {
+                room.getLock().unlock();
+            }
+        }
     }
 
 
@@ -246,6 +356,20 @@ public class GameEngine {
         messaging.convertAndSend(dest, payload);
     }
 
+    public void broadcastLobbyUpdate(String roomId) {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) return;
+        broadcastState(room, buildLobbyState(room));
+    }
+
+    public void broadcastDrawingState(String roomId, DrawEventOut event) {
+        messaging.convertAndSend("/topic/room/" + roomId + "/draw", event);
+    }
+
+    public void broadcastChat(String roomId, ChatEvent event) {
+        messaging.convertAndSend("/topic/room/" + roomId + "/chat", event);
+    }
+
     private void sendToUser(String sessionId, String destination, Object payload) {
         messaging.convertAndSendToUser(sessionId, destination, payload, createHeaders(sessionId));
     }
@@ -265,6 +389,10 @@ public class GameEngine {
     private void cancelTimers(String roomId) {
         List<ScheduledFuture<?>> timers = roomTimers.remove(roomId);
         if (timers != null) timers.forEach(f -> f.cancel(false));
+    }
+
+    private String sanitize(String text) {
+        return text.trim().toLowerCase().strip();
     }
 
     //----------------TIMEOUT HANDLERS-----------------//

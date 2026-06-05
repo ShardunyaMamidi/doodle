@@ -26,18 +26,16 @@ public class DrawingService {
     }
 
     // Undo event (removing the last 'stroke' event)
-    public void undoLast(GameRoom room) {
+    public boolean undoLast(GameRoom room) {
         List<DrawEvent> buffer = room.getCanvasBuffer();
         for (int i = buffer.size() - 1; i >= 0; i--) {
             if ("stroke".equals(buffer.get(i).getType())) {
                 buffer.remove(i);
-                break;
+                buffer.add(new DrawEvent("undo", null, null, 0, System.currentTimeMillis()));
+                return true;
             }
         }
-
-        // add undo event into the buffer
-        buffer.add(new DrawEvent(
-                "undo", null, null, 0, System.currentTimeMillis()));
+        return false;
     }
 
     // Get snaphost of drawEvents for late joiners/reconnecting players

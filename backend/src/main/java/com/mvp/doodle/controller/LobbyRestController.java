@@ -10,8 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -27,9 +25,10 @@ public class LobbyRestController {
     // so the WebSocket layer can match this HTTP-created player to their WS session.
     @PostMapping("/rooms/create")
     public ResponseEntity<CreateRoomResponse> createRoom(@RequestBody CreateRoomRequest req) {
-        String playerToken = UUID.randomUUID().toString();
-        GameRoom room = roomService.createRoom(playerToken, req);
-        return ResponseEntity.ok(new CreateRoomResponse(room.getRoomId(), room.getRoomCode(), playerToken));
+        String tempSessionId = UUID.randomUUID().toString();
+        GameRoom room = roomService.createRoom(tempSessionId, req);
+        String reconnectToken = room.getPlayers().get(tempSessionId).getReconnectToken();
+        return ResponseEntity.ok(new CreateRoomResponse(room.getRoomId(), room.getRoomCode(), reconnectToken));
     }
 
     // GET /api/rooms/public

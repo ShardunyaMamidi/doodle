@@ -11,6 +11,7 @@ import com.mvp.doodle.model.Player;
 import com.mvp.doodle.model.RoomSettings;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -110,10 +111,8 @@ public class RoomService {
         try {
             Player player = room.getPlayers().get(sessionId);
             if (player != null) player.setConnected(false);
-            if (room.getConnectedPlayerCount() == 0) {
-                // In the future, we can add a small delay of 1min in case a player joins
-                cleanupRoom(roomId, room.getRoomCode());
-            } else if (sessionId.equals(room.getHostSessionId())) {
+            //GameEngine schedules a grace-period timer and cleans up the room
+            if (sessionId.equals(room.getHostSessionId()) && room.getConnectedPlayerCount() > 0) {
                 transferHost(room);
             }
         } finally {
@@ -144,7 +143,7 @@ public class RoomService {
     }
 
     // Clearing the room incase no one exists
-    private void cleanupRoom(String roomId, String code) {
+    public void cleanupRoom(String roomId, String code) {
         rooms.remove(roomId);
         codeToRoom.remove(code);
     }
@@ -161,6 +160,46 @@ public class RoomService {
             if (updates.rounds() != null)          settings.setRounds(updates.rounds());
             if (updates.turnTimeSeconds() != null)  settings.setTurnTimeSeconds(updates.turnTimeSeconds());
             if (updates.maxPlayers() != null)       settings.setMaxPlayers(updates.maxPlayers());
+        } finally {
+            room.getLock().unlock();
+        }
+    }
+
+    // Find player by reconnectToken, transfer to new sessionId, update all maps
+    public boolean reconnectPlayer(String roomId, String newSessionId, String token) {
+        GameRoom room = getRoom(roomId);
+        if (room == null) return false;
+        room.getLock().lock();
+        try {
+            Player player = room.getPlayers().values().stream()
+                    .filter(p -> token.equals(p.getReconnectToken()))
+                    .findFirst().orElse(null);
+            if (player == null) return false;
+
+            String oldSessionId = player.getSessionId();
+            player.setSessionId(newSessionId);
+
+            // Re-key the players map
+            room.getPlayers().remove(oldSessionId);
+            room.getPlayers().put(newSessionId, player);
+
+            // Update session → room mapping
+            sessionToRoom.remove(oldSessionId);
+            sessionToRoom.put(newSessionId, roomId);
+
+            // Update drawer rotation order if mid-game
+            List<String> drawerOrder = room.getDrawerOrder();
+            if (drawerOrder != null) {
+                int idx = drawerOrder.indexOf(oldSessionId);
+                if (idx >= 0) drawerOrder.set(idx, newSessionId);
+            }
+
+            // Transfer host if needed
+            if (oldSessionId.equals(room.getHostSessionId())) {
+                room.setHostSessionId(newSessionId);
+            }
+
+            return true;
         } finally {
             room.getLock().unlock();
         }

@@ -2,11 +2,12 @@ package com.mvp.doodle.service;
 
 import com.mvp.doodle.dto.inbound.gameplay.ChatMessageIn;
 import com.mvp.doodle.dto.inbound.gameplay.DrawMessageIn;
-import com.mvp.doodle.dto.inbound.gameplay.WordChoiceIn;
+import com.mvp.doodle.dto.outbound.draw.CanvasSnapshot;
 import com.mvp.doodle.dto.outbound.draw.DrawEventOut;
 import com.mvp.doodle.dto.outbound.draw.WordChoicesPrivate;
 import com.mvp.doodle.dto.outbound.shared.PlayerInfo;
 import com.mvp.doodle.dto.outbound.shared.ScoreEntry;
+import com.mvp.doodle.dto.outbound.shared.TokenOut;
 import com.mvp.doodle.dto.outbound.state.*;
 import com.mvp.doodle.model.DrawEvent;
 import com.mvp.doodle.model.GameRoom;
@@ -31,7 +32,7 @@ public class GameEngine {
     private final ScoringService scoringService;
     private final SimpMessagingTemplate messaging;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
-    // Timers of different rooms
+    // Timers of different rooms: roomId -- List<Timers>
     private final ConcurrentHashMap<String, List<ScheduledFuture<?>>> roomTimers = new ConcurrentHashMap<>();
 
     public GameEngine(RoomService roomService, WordService wordService, SimpMessagingTemplate messaging, DrawingService drawingService, ScoringService scoringService) {
@@ -246,8 +247,9 @@ public class GameEngine {
                         broadcastDrawingState(roomId, new DrawEventOut("clear", null, null, 0));
                     }
                     case "undo" -> {
-                        drawingService.undoLast(room);
-                        broadcastDrawingState(roomId, new DrawEventOut("undo", null, null, 0));
+                        if (drawingService.undoLast(room)) {
+                            broadcastDrawingState(roomId, new DrawEventOut("undo", null, null, 0));
+                        }
                     }
                 }
             } finally {
@@ -330,6 +332,107 @@ public class GameEngine {
                 room.getLock().unlock();
             }
         }
+    }
+
+
+    // Called after RoomService.handleDisconnect has already marked the player disconnected
+    public void handlePlayerDisconnect(String roomId, String sessionId) {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) return;
+        room.getLock().lock();
+        try {
+            if (room.getConnectedPlayerCount() == 0) {
+                // Grace period — if nobody reconnects in 15s, destroy the room
+                scheduleTimer(roomId, 15_000, () -> {
+                    GameRoom r = roomService.getRoom(roomId);
+                    if (r != null && r.getConnectedPlayerCount() == 0) {
+                        roomService.cleanupRoom(roomId, r.getRoomCode());
+                    }
+                });
+                return;
+            }
+
+            if (room.getState() == GameState.DRAWING
+                    && sessionId.equals(room.getCurrentDrawerSessionId())) {
+                // Drawer left mid-turn → end the turn immediately, no one earns points
+                transitionToTurnEnd(room);
+            } else if (room.getState() == GameState.WORD_SELECTION
+                    && sessionId.equals(room.getCurrentDrawerSessionId())) {
+                // Drawer left during word pick → skip their turn
+                advanceNextTurn(roomId);
+            } else if (room.getState() == GameState.LOBBY) {
+                broadcastLobbyUpdate(roomId);
+            }
+            // TURN_END / ROUND_END / GAME_OVER are transient — scheduled timers handle the next transition
+        } finally {
+            room.getLock().unlock();
+        }
+    }
+
+    // Send reconnect token privately to a newly joined player
+    // Must be stored in the session storage
+    public void sendReconnectToken(String roomId, String sessionId, GameRoom room) {
+        Player player = room.getPlayers().get(sessionId);
+        if (player == null) return;
+        sendToUser(sessionId, "/queue/room/" + roomId + "/token", new TokenOut(player.getReconnectToken()));
+    }
+
+    // Reconnect via token: transfer player to new sessionId then sync state
+
+    public void handleReconnectByToken(String roomId, String newSessionId, String token) {
+        boolean found = roomService.reconnectPlayer(roomId, newSessionId, token);
+        if (!found) return;
+        handlePlayerReconnect(roomId, newSessionId);
+    }
+
+    // handling player reconnection
+    // Must receive all the game information (drawing status, scoreboard, game phase)
+    public void handlePlayerReconnect(String roomId, String sessionId) {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) return;
+        room.getLock().lock();
+
+        try {
+            Player player = room.getPlayers().get(sessionId);
+            if (player == null) return;
+            player.setConnected(true);
+
+            sendToUser(sessionId, "/queue/room/" + roomId + "/sync", buildStateSyncPayload(room, sessionId));
+
+            if (GameState.DRAWING.equals(room.getState())) {
+                sendToUser(sessionId, "/queue/room/" + roomId + "/canvas-sync", new CanvasSnapshot(drawingService.getSnapshot(room)));
+            } else if (GameState.WORD_SELECTION.equals(room.getState()) && sessionId.equals(room.getCurrentDrawerSessionId())) {
+                sendToUser(sessionId, "/queue/room/" + roomId + "/word-choices", new WordChoicesPrivate(room.getWordChoices(), room.getSettings().getWordSelectionSeconds()));
+            }
+
+        } finally {
+            room.getLock().unlock();
+        }
+    }
+
+    // Build the payload that syncs all the info for player reconnection
+    private RoomStateEvent buildStateSyncPayload(GameRoom room, String sessionId) {
+        Object payload = switch (room.getState()) {
+            case LOBBY -> buildLobbyState(room);
+            case WORD_SELECTION -> new WordSelectionState(
+                    room.getCurrentDrawer().getName(),
+                    room.getSettings().getWordSelectionSeconds());
+            case DRAWING -> {
+                int timeLeft = (int) Math.max(0, (room.getTurnDeadlineEpochMs() - System.currentTimeMillis()) / 1000);
+                boolean isDrawer = sessionId.equals(room.getCurrentDrawerSessionId());
+                String word = isDrawer ? room.getCurrentWord() : room.getCurrentBlanks();
+                yield new DrawingState(
+                        room.getCurrentDrawer().getName(),
+                        room.getCurrentDrawerSessionId(),
+                        word,
+                        room.getCurrentWord().length(),
+                        timeLeft);
+            }
+            case TURN_END -> new TurnEndState(room.getCurrentWord(), Map.of(), buildScoreboard(room));
+            case ROUND_END -> new RoundEndState(room.getCurrentRound(), buildScoreboard(room));
+            case GAME_OVER -> new GameOverState(buildScoreboard(room));
+        };
+        return new RoomStateEvent(room.getState(), payload);
     }
 
 

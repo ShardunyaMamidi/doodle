@@ -3,6 +3,8 @@ package com.mvp.doodle.model;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.UUID;
+
 @Getter
 @Setter
 public class Player {
@@ -14,6 +16,7 @@ public class Player {
     private boolean hasGuessedThisTurn;
     private int guessOrder;
     private boolean connected;
+    private final String reconnectToken = UUID.randomUUID().toString();
 
     public Player(String sessionId, String name, int avatarId) {
         this.sessionId = sessionId;

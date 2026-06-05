@@ -35,8 +35,9 @@ public class WebSocketEventListener {
         String roomId = roomService.getRoomIdForSession(sessionId);
         if (roomId == null) return;
 
+        // Mark player disconnected + handle host transfer / room cleanup
         roomService.handleDisconnect(sessionId);
-        // TODO: for now, the disconnect only updates the player list. We will deal with game-state-specific things later
-        gameEngine.broadcastLobbyUpdate(roomId);
+        // Handle game-state consequences (end turn if drawer left, skip turn if drawer left during word pick, etc.)
+        gameEngine.handlePlayerDisconnect(roomId, sessionId);
     }
 }

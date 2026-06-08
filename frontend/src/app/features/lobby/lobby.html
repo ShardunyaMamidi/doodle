@@ -1,0 +1,76 @@
+<main class="lobby">
+  <header class="lobby__head">
+    <h1>Lobby</h1>
+    @if (roomCode()) {
+      <div class="invite">
+        <span class="code">{{ roomCode() }}</span>
+        <button type="button" (click)="copyInvite()">Copy invite link</button>
+      </div>
+    }
+  </header>
+
+  <section class="players">
+    <h2>Players ({{ connectedCount() }})</h2>
+    <ul>
+      @for (p of players(); track trackBySession($index, p)) {
+        <li class="player" [class.offline]="!p.connected">
+          <span class="avatar">{{ p.avatarId }}</span>
+          <span class="name">{{ p.name }}</span>
+          @if (p.sessionId === mySessionId()) { <span class="badge you">you</span> }
+          @if (p.isHost) { <span class="badge host">host</span> }
+          @if (!p.connected) { <span class="badge offline">offline</span> }
+        </li>
+      } @empty {
+        <li class="empty">Waiting for players…</li>
+      }
+    </ul>
+  </section>
+
+  @if (isHost() && settings(); as s) {
+    <section class="settings">
+      <h2>Settings</h2>
+      <label>
+        Rounds: {{ s.rounds }}
+        <input
+          type="range"
+          min="1"
+          max="10"
+          [ngModel]="s.rounds"
+          (ngModelChange)="updateRounds($event)"
+        />
+      </label>
+      <label>
+        Turn time: {{ s.turnTimeSeconds }}s
+        <input
+          type="range"
+          min="30"
+          max="120"
+          step="10"
+          [ngModel]="s.turnTimeSeconds"
+          (ngModelChange)="updateTurnTime($event)"
+        />
+      </label>
+      <label>
+        Max players: {{ s.maxPlayers }}
+        <input
+          type="range"
+          min="2"
+          max="12"
+          [ngModel]="s.maxPlayers"
+          (ngModelChange)="updateMaxPlayers($event)"
+        />
+      </label>
+    </section>
+  }
+
+  @if (isHost()) {
+    <button class="primary" type="button" [disabled]="!canStart()" (click)="start()">
+      Start game
+    </button>
+    @if (!canStart()) {
+      <p class="hint">Need at least 2 connected players to start.</p>
+    }
+  } @else {
+    <p class="hint">Waiting for the host to start the game…</p>
+  }
+</main>

@@ -1,0 +1,71 @@
+<main class="home">
+  <h1>Doodle</h1>
+
+  <section class="card">
+    <label class="field">
+      <span>Your name</span>
+      <input
+        type="text"
+        maxlength="20"
+        placeholder="e.g. Alice"
+        [ngModel]="name()"
+        (ngModelChange)="name.set($event)"
+      />
+    </label>
+
+    <fieldset class="field">
+      <legend>Avatar</legend>
+      <div class="avatars">
+        @for (a of avatars; track a) {
+          <button
+            type="button"
+            class="avatar"
+            [class.selected]="avatarId() === a"
+            (click)="avatarId.set(a)"
+          >
+            {{ a }}
+          </button>
+        }
+      </div>
+    </fieldset>
+  </section>
+
+  <section class="card">
+    <h2>Create a room</h2>
+    <label class="checkbox">
+      <input
+        type="checkbox"
+        [ngModel]="isPublic()"
+        (ngModelChange)="isPublic.set($event)"
+      />
+      <span>Make it public (others can auto-match in)</span>
+    </label>
+    <button type="button" class="primary" [disabled]="!nameValid" (click)="createRoom()">
+      Create room
+    </button>
+  </section>
+
+  <section class="card">
+    <h2>Join a room</h2>
+    <label class="field">
+      <span>Room code</span>
+      <input
+        type="text"
+        maxlength="6"
+        placeholder="ABC123"
+        [ngModel]="code()"
+        (ngModelChange)="code.set($event)"
+      />
+    </label>
+    <button type="button" [disabled]="!nameValid || !code()" (click)="joinByCode()">
+      Join by code
+    </button>
+    <button type="button" [disabled]="!nameValid" (click)="joinPublic()">
+      Auto-match public room
+    </button>
+  </section>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+</main>

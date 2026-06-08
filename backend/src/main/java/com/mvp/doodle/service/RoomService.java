@@ -35,6 +35,7 @@ public class RoomService {
         // Adding the host into the room in a concurrent queue (to preserver order)
         room.getPlayers().put(sessionId, host);
         room.setHostSessionId(sessionId);
+        room.setState(GameState.LOBBY);
         rooms.put(roomId, room);
         sessionToRoom.put(sessionId, roomId);
         codeToRoom.put(code, roomId);

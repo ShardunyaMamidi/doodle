@@ -2,6 +2,8 @@ server:
   port: 8080
 
 doodle:
+  allowed-origins:
+    - http://localhost:4200
   room:
     max-players: 8
     code-length: 6

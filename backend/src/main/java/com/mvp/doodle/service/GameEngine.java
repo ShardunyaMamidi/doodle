@@ -374,7 +374,7 @@ public class GameEngine {
     public void sendReconnectToken(String roomId, String sessionId, GameRoom room) {
         Player player = room.getPlayers().get(sessionId);
         if (player == null) return;
-        sendToUser(sessionId, "/queue/room/" + roomId + "/token", new TokenOut(player.getReconnectToken()));
+        sendToUser(sessionId, "/queue/room/" + roomId + "/token", new TokenOut(player.getReconnectToken(), sessionId));
     }
 
     // Reconnect via token: transfer player to new sessionId then sync state
@@ -397,6 +397,8 @@ public class GameEngine {
             if (player == null) return;
             player.setConnected(true);
 
+            // Let the (re)connected client learn its new session id alongside its token.
+            sendToUser(sessionId, "/queue/room/" + roomId + "/token", new TokenOut(player.getReconnectToken(), sessionId));
             sendToUser(sessionId, "/queue/room/" + roomId + "/sync", buildStateSyncPayload(room, sessionId));
 
             if (GameState.DRAWING.equals(room.getState())) {

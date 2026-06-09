@@ -106,9 +106,15 @@ public class GameEngine {
         int turnTime = room.getSettings().getTurnTimeSeconds();
         room.setTurnDeadlineEpochMs(System.currentTimeMillis() + turnTime * 1000L);
 
-        // Broadcast drawing state (only blanks and no words)
+        // Broadcast drawing state with blanks to all players
         broadcastState(room,
                 new DrawingState(room.getCurrentDrawer().getName(), room.getCurrentDrawerSessionId(), room.getCurrentBlanks(), chosenWord.length(), turnTime));
+
+        // Drawer must always know the actual word (critical when the word was auto-selected on timeout)
+        String drawerId = room.getCurrentDrawerSessionId();
+        sendToUser(drawerId, "/queue/room/" + room.getRoomId() + "/sync",
+                new RoomStateEvent(GameState.DRAWING,
+                        new DrawingState(room.getCurrentDrawer().getName(), drawerId, chosenWord, chosenWord.length(), turnTime)));
 
         // Schedule turn timout
         scheduleTimer(room.getRoomId(), turnTime * 1000L, () -> onDrawingTimeout(room.getRoomId()));

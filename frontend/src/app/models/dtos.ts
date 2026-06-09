@@ -85,6 +85,12 @@ export interface ChatEvent {
   type: ChatType;
 }
 
+/** Private to the drawer: the word options to pick from (backend sends 4). */
+export interface WordChoicesPrivate {
+  words: string[];
+  timeoutSeconds: number;
+}
+
 // ---- REST requests / responses (inbound/room, outbound/rest) ----
 
 export interface CreateRoomRequest {

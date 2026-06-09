@@ -9,6 +9,7 @@ import {
   JoinRoomRequest,
   SettingsUpdateIn,
   TokenOut,
+  WordChoicesPrivate,
 } from '../../models/dtos';
 import { RoomStateEvent } from '../../models/room-state-event';
 import { DrawOp } from '../../models/draw-op';
@@ -64,6 +65,11 @@ export class RealtimeService {
     return this.watch(`/user/queue/room/${roomId}/sync`);
   }
 
+  /** Word options sent privately to the drawer during WORD_SELECTION. */
+  wordChoices$(roomId: string): Observable<WordChoicesPrivate> {
+    return this.watch(`/user/queue/room/${roomId}/word-choices`);
+  }
+
   // ---- Publishers (/app) ----
 
   join(roomId: string, req: JoinRoomRequest): void {
@@ -84,6 +90,14 @@ export class RealtimeService {
 
   sendDraw(roomId: string, op: DrawOp): void {
     this.publish(`/app/room/${roomId}/draw`, op);
+  }
+
+  sendChat(roomId: string, text: string): void {
+    this.publish(`/app/room/${roomId}/chat`, { text });
+  }
+
+  chooseWord(roomId: string, choiceIndex: number): void {
+    this.publish(`/app/room/${roomId}/word-choice`, { choiceIndex });
   }
 
   /** Tear down the connection (e.g. on leaving a room). */

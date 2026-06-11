@@ -12,7 +12,7 @@ import {
   WordChoicesPrivate,
 } from '../../models/dtos';
 import { RoomStateEvent } from '../../models/room-state-event';
-import { DrawOp } from '../../models/draw-op';
+import { CanvasSnapshot, DrawOp } from '../../models/draw-op';
 
 /**
  * Thin wrapper over a single RxStomp connection. Owns the transport only —
@@ -68,6 +68,11 @@ export class RealtimeService {
   /** Word options sent privately to the drawer during WORD_SELECTION. */
   wordChoices$(roomId: string): Observable<WordChoicesPrivate> {
     return this.watch(`/user/queue/room/${roomId}/word-choices`);
+  }
+
+  /** Full canvas replay sent privately to a late joiner / reconnecting player. */
+  canvasSnapshot$(roomId: string): Observable<CanvasSnapshot> {
+    return this.watch(`/user/queue/room/${roomId}/canvas-sync`);
   }
 
   // ---- Publishers (/app) ----

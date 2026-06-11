@@ -12,6 +12,7 @@ import java.util.List;
 public class DrawEvent {
 
     private String type;        // "stroke" | "clear" | "undo"
+    private String strokeId;    // groups streamed batches into one stroke; null for clear/undo
     private List<double[]> points;
     private String color;
     private float lineWidth;

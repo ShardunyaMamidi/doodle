@@ -96,11 +96,33 @@ class DrawingServiceTest {
     }
 
     @Test
+    @DisplayName("undoLast removes ALL batches of a streamed stroke sharing one strokeId")
+    void undoLast_removesAllBatchesOfStreamedStroke() {
+        // A single stroke streamed as three throttled batches (same strokeId)...
+        drawingService.addStroke(room, strokeMsg("stroke-A"));
+        drawingService.addStroke(room, strokeMsg("stroke-A"));
+        drawingService.addStroke(room, strokeMsg("stroke-A"));
+        // ...followed by a second, separate stroke.
+        drawingService.addStroke(room, strokeMsg("stroke-B"));
+
+        boolean removed = drawingService.undoLast(room);
+
+        assertThat(removed).isTrue();
+        // Only stroke-B (one batch) is gone; all three stroke-A batches remain.
+        assertThat(countType("stroke")).isEqualTo(3);
+        assertThat(countType("undo")).isEqualTo(1);
+
+        // Undo again removes all three stroke-A batches in one shot.
+        drawingService.undoLast(room);
+        assertThat(countType("stroke")).isZero();
+    }
+
+    @Test
     @DisplayName("undoLast skips non-stroke markers to find the stroke beneath them")
     void undoLast_skipsNonStrokeMarkers() {
         drawingService.addStroke(room, strokeMsg());
         // Manually drop a non-stroke marker on top of the stroke
-        room.getCanvasBuffer().add(new DrawEvent("clear", null, null, 0, 0));
+        room.getCanvasBuffer().add(new DrawEvent("clear", null, null, null, 0, 0));
         // buffer = ["stroke", "clear"]
 
         boolean removed = drawingService.undoLast(room);
@@ -121,7 +143,7 @@ class DrawingServiceTest {
 
         List<DrawEvent> snapshot = drawingService.getSnapshot(room);
 
-        assertThatThrownBy(() -> snapshot.add(new DrawEvent("stroke", null, null, 0, 0)))
+        assertThatThrownBy(() -> snapshot.add(new DrawEvent("stroke", null, null, null, 0, 0)))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -160,7 +182,11 @@ class DrawingServiceTest {
     // ─────────────────────────────────────────────────────────────────────
 
     private DrawMessageIn strokeMsg() {
-        return new DrawMessageIn("stroke", List.of(new double[]{1, 2, 0.5}), "#000000", 5f);
+        return strokeMsg(java.util.UUID.randomUUID().toString());
+    }
+
+    private DrawMessageIn strokeMsg(String strokeId) {
+        return new DrawMessageIn("stroke", strokeId, List.of(new double[]{1, 2, 0.5}), "#000000", 5f);
     }
 
     private long countType(String type) {

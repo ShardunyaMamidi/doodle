@@ -246,15 +246,15 @@ public class GameEngine {
                 switch (msg.type()) {
                     case "stroke" -> {
                         DrawEvent event = drawingService.addStroke(room, msg);
-                        broadcastDrawingState(roomId, new DrawEventOut(event.getType(), event.getPoints(), event.getColor(), event.getLineWidth()));
+                        broadcastDrawingState(roomId, new DrawEventOut(event.getType(), event.getStrokeId(), event.getPoints(), event.getColor(), event.getLineWidth()));
                     }
                     case "clear" -> {
                         drawingService.clearCanvas(room);
-                        broadcastDrawingState(roomId, new DrawEventOut("clear", null, null, 0));
+                        broadcastDrawingState(roomId, new DrawEventOut("clear", null, null, null, 0));
                     }
                     case "undo" -> {
                         if (drawingService.undoLast(room)) {
-                            broadcastDrawingState(roomId, new DrawEventOut("undo", null, null, 0));
+                            broadcastDrawingState(roomId, new DrawEventOut("undo", null, null, null, 0));
                         }
                     }
                 }

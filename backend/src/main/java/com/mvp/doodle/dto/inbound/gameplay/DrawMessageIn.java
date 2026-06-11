@@ -7,6 +7,7 @@ import java.util.List;
 // Stroke points, color, brush size, etc. that the drawer does
 public record DrawMessageIn(
         @NotBlank String type,          // "stroke" | "clear" | "undo"
+        String strokeId,                // groups streamed batches into one stroke; null for clear/undo
         List<double[]> points,          // null for clear / undo
         String color,
         float lineWidth

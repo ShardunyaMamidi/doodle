@@ -238,7 +238,7 @@ class GameEngineTest {
         clearInvocations(messaging);
 
         engine.handleDraw(room.getRoomId(), room.getCurrentDrawerSessionId(),
-                new DrawMessageIn("undo", null, null, 0));
+                new DrawMessageIn("undo", null, null, null, 0));
 
         verify(messaging, never()).convertAndSend(eq(drawDest(room)), any(Object.class));
     }
@@ -367,6 +367,7 @@ class GameEngineTest {
     }
 
     private DrawMessageIn strokeMsg() {
-        return new DrawMessageIn("stroke", List.of(new double[]{1, 2, 0.5}), "#000000", 5f);
+        return new DrawMessageIn("stroke", java.util.UUID.randomUUID().toString(),
+                List.of(new double[]{1, 2, 0.5}), "#000000", 5f);
     }
 }

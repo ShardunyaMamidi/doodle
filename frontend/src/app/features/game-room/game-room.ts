@@ -17,7 +17,7 @@ import {
   selectIsChoosingWord,
 } from '../../store/game/game.selectors';
 import { Lobby } from '../lobby/lobby';
-import { CanvasPlaceholder } from './canvas-placeholder/canvas-placeholder';
+import { CanvasComponent } from '../../canvas/canvas.component';
 import { Chat } from './chat/chat';
 import { Players } from './players/players';
 import { TimerHints } from './timer-hints/timer-hints';
@@ -37,7 +37,7 @@ interface EntryNavState {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     Lobby,
-    CanvasPlaceholder,
+    CanvasComponent,
     Chat,
     Players,
     TimerHints,
@@ -58,14 +58,14 @@ interface EntryNavState {
 
             @switch (phase()) {
               @case ('WORD_SELECTION') {
-                <app-canvas-placeholder />
+                <app-canvas />
                 @if (isChoosingWord()) { <app-word-choice /> }
               }
               @case ('DRAWING') {
-                <app-canvas-placeholder />
+                <app-canvas />
               }
               @case ('TURN_END') {
-                <app-canvas-placeholder />
+                <app-canvas />
                 <app-turn-end />
               }
               @case ('ROUND_END') {
